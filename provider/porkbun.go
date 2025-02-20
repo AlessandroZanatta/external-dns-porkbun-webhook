@@ -204,11 +204,11 @@ func (p *PorkbunProvider) ApplyChanges(ctx context.Context, changes *plan.Change
 		if err != nil {
 			return err
 		}
-		_, err = p.UpdateDnsRecords(ctx, zoneName, change.Delete)
+		_, err = p.DeleteDnsRecords(ctx, zoneName, change.Delete)
 		if err != nil {
 			return err
 		}
-		_, err = p.UpdateDnsRecords(ctx, zoneName, change.Create)
+		_, err = p.CreateDnsRecords(ctx, zoneName, change.Create)
 		if err != nil {
 			return err
 		}
