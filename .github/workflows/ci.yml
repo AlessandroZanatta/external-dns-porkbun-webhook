@@ -1,8 +1,9 @@
+---
 name: ci
 
 on:
   push:
-    branches: ['main']
+    branches: ["main"]
   release:
     types:
       - created
@@ -21,54 +22,6 @@ jobs:
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v6
 
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-
-      - name: Run tests
-        run: |
-          make test
-
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-
-      - name: Run build
-        run: |
-          make build
-
-  build-and-push-binaries:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-      - name: Run GoReleaser
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: goreleaser/goreleaser-action@v6
-        with:
-          version: latest
-          args: release --clean
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
   build-and-push-image:
     runs-on: ubuntu-latest
     permissions:
@@ -81,10 +34,10 @@ jobs:
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
-      
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-      
+
       - name: Log in to the Container registry
         uses: docker/login-action@v3
         with:
