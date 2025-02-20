@@ -54,11 +54,16 @@ func main() {
 		log.Fatal().Err(err).Msg("Failed to create provider")
 	}
 	webhookServer := http.Server{
+		Addr:              *listenAddr,
 		Handler:           webhookMux,
-		ReadHeaderTimeout: 5 * time.Second}
+		ReadHeaderTimeout: 5 * time.Second,
+	}
 
 	log.Info().Str("address", *listenAddr).Msg("Started external-dns-porkbun-webhook webhook server")
-	webhookServer.ListenAndServe()
+	err = webhookServer.ListenAndServe()
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to start the webhook server")
+	}
 }
 
 func buildWebhookServer(logger zerolog.Logger) (*http.ServeMux, error) {
