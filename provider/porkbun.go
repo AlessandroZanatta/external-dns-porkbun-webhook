@@ -108,8 +108,9 @@ func (p *PorkbunProvider) Records(ctx context.Context) ([]*endpoint.Endpoint, er
 		p.logger.Info().Str("domain", domain).Msg("Got DNS records for domain")
 
 		for _, rec := range records {
-			name := fmt.Sprintf("%s.%s", rec.Name, domain)
-			if rec.Name == "@" {
+			p.logger.Debug().Str("record", fmt.Sprintf("%+v", rec)).Msg("Processing record")
+			name := rec.Name
+			if strings.Split(rec.Name, ".")[0] == "@" {
 				name = domain
 			}
 
@@ -124,7 +125,7 @@ func (p *PorkbunProvider) Records(ctx context.Context) ([]*endpoint.Endpoint, er
 	}
 
 	for _, endpointItem := range endpoints {
-		p.logger.Debug().Str("endpoints", endpointItem.String()).Msg("endpoints collected")
+		p.logger.Debug().Str("endpoints", endpointItem.String()).Msg("Endpoints collected")
 	}
 	return endpoints, nil
 }
@@ -132,7 +133,7 @@ func (p *PorkbunProvider) Records(ctx context.Context) ([]*endpoint.Endpoint, er
 // ApplyChanges applies a given set of changes in a given zone.
 func (p *PorkbunProvider) ApplyChanges(ctx context.Context, changes *plan.Changes) error {
 	if !changes.HasChanges() {
-		p.logger.Debug().Msg("no changes detected - nothing to do")
+		p.logger.Debug().Msg("No changes detected - nothing to do")
 		return nil
 	}
 
@@ -202,7 +203,6 @@ func (p *PorkbunProvider) ApplyChanges(ctx context.Context, changes *plan.Change
 			Delete:    convertToPorkbunRecord(&recs, c.Delete, zoneName),
 		}
 
-		// If not in dry run, apply changes
 		_, err = p.UpdateDnsRecords(ctx, zoneName, change.UpdateOld)
 		if err != nil {
 			return err
