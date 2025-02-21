@@ -59,6 +59,7 @@ func (p *PorkbunProvider) CreateDnsRecords(ctx context.Context, zone string, rec
 	for _, record := range *records {
 		_, err := p.client.CreateRecord(ctx, zone, record)
 		if err != nil {
+			p.logger.Error().Err(err).Str("zone", zone).Str("record", fmt.Sprintf("%+v", record)).Msg("Failed to create record")
 			return "", fmt.Errorf("unable to create record: %v", err)
 		}
 	}
@@ -73,6 +74,7 @@ func (p *PorkbunProvider) DeleteDnsRecords(ctx context.Context, zone string, rec
 		}
 		err = p.client.DeleteRecord(ctx, zone, id)
 		if err != nil {
+			p.logger.Error().Err(err).Str("zone", zone).Int("id", id).Str("record", fmt.Sprintf("%+v", record)).Msg("Failed to delete record")
 			return "", fmt.Errorf("unable to delete record: %v", err)
 		}
 	}
@@ -87,6 +89,7 @@ func (p *PorkbunProvider) UpdateDnsRecords(ctx context.Context, zone string, rec
 		}
 		err = p.client.EditRecord(ctx, zone, id, record)
 		if err != nil {
+			p.logger.Error().Err(err).Str("zone", zone).Int("id", id).Str("record", fmt.Sprintf("%+v", record)).Msg("Failed to update record")
 			return "", fmt.Errorf("unable to update record: %v", err)
 		}
 	}
