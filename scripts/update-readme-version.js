@@ -13,7 +13,7 @@ let readmeContent = fs.readFileSync(readmePath, "utf8");
 
 // Regex to find the action with the version in the README
 const actionUsageRegex =
-  /(ghcr.io\/alessandrozanatta\/external-dns-porkbun-webhook)@v\d+\.\d+\.\d+$/g;
+  /(ghcr.io\/alessandrozanatta\/external-dns-porkbun-webhook)@\d+\.\d+\.\d+$/g;
 
 // Replace with the new version
 const updatedContent = readmeContent.replace(
