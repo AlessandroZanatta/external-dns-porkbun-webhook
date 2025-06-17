@@ -1,0 +1,27 @@
+{
+  "name": "external-dns-porkbun-webhook",
+  "version": "1.0.0",
+  "description": "A simple external-dns porkbun webhook to manage DNS from Kubernetes resources!",
+  "repository": "git@github.com:AlessandroZanatta/external-dns-porkbun-webhook.git",
+  "author": "Alessandro Zanatta <alessandro.zanatta.lav@gmail.com>",
+  "license": "MIT",
+  "private": true,
+  "keywords": [
+    "external-dns",
+    "porkbun"
+  ],
+  "devDependencies": {
+    "@codedependant/semantic-release-docker": "^5.1.1",
+    "@commitlint/cli": "^19.8.1",
+    "@commitlint/config-conventional": "^19.8.1",
+    "@semantic-release/changelog": "^6.0.3",
+    "@semantic-release/commit-analyzer": "^13.0.1",
+    "@semantic-release/exec": "^7.1.0",
+    "@semantic-release/git": "^10.0.1",
+    "@semantic-release/github": "^11.0.3",
+    "@semantic-release/npm": "^12.0.1",
+    "@semantic-release/release-notes-generator": "^14.0.3",
+    "husky": "^9.1.7",
+    "semantic-release": "^24.2.5"
+  }
+}
