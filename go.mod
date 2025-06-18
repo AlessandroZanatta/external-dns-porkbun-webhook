@@ -7,7 +7,7 @@ toolchain go1.23.5
 require (
 	github.com/alecthomas/kingpin/v2 v2.4.0
 	github.com/nrdcg/porkbun v0.4.0
-	github.com/rs/zerolog v1.33.0
+	github.com/rs/zerolog v1.34.0
 	sigs.k8s.io/external-dns v0.15.1
 )
 
