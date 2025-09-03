@@ -2,7 +2,7 @@ module github.com/AlessandroZanatta/external-dns-porkbun-webhook
 
 go 1.23.3
 
-toolchain go1.23.5
+toolchain go1.25.1
 
 require (
 	github.com/alecthomas/kingpin/v2 v2.4.0
