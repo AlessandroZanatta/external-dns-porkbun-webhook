@@ -253,7 +253,7 @@ func (p *PorkbunProvider) convertToPorkbunRecord(recs *[]pb.Record, endpoints []
 			Type:    ep.RecordType,
 			Name:    recordName,
 			Content: target,
-			ID:      p.getIDforRecord(ep.DNSName, target, ep.RecordType, recs),
+			ID:      p.getIDForRecord(ep.DNSName, target, ep.RecordType, recs),
 		}
 	}
 	return &records
@@ -261,8 +261,7 @@ func (p *PorkbunProvider) convertToPorkbunRecord(recs *[]pb.Record, endpoints []
 
 // getIDforRecord compares the endpoint with existing records to get the ID from Porkbun to ensure it can be safely removed.
 // returns empty string if no match found
-func (p *PorkbunProvider) getIDforRecord(recordName string, target string, recordType string, recs *[]pb.Record) string {
-	p.logger.Debug().Str("recordName", recordName).Str("target", target).Str("recordType", recordType).Str("recs", fmt.Sprintf("%+v", recs)).Msg("Getting ID for record")
+func (p *PorkbunProvider) getIDForRecord(recordName string, target string, recordType string, recs *[]pb.Record) string {
 	for _, rec := range *recs {
 		if recordType == rec.Type && target == rec.Content && rec.Name == recordName {
 			return rec.ID
