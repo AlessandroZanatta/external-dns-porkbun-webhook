@@ -153,7 +153,7 @@ func (p *PorkbunProvider) ApplyChanges(ctx context.Context, changes *plan.Change
 	}
 
 	for _, ep := range changes.Create {
-		zoneName := endpointZoneName(ep, p.domainFilter.Filters)
+		zoneName := p.endpointZoneName(ep, p.domainFilter.Filters)
 		if zoneName == "" {
 			p.logger.Debug().Str("type", "create").Str("endpoint", ep.String()).Msg("Ignoring change since it did not match any zone")
 			continue
@@ -164,7 +164,7 @@ func (p *PorkbunProvider) ApplyChanges(ctx context.Context, changes *plan.Change
 	}
 
 	for _, ep := range changes.UpdateOld {
-		zoneName := endpointZoneName(ep, p.domainFilter.Filters)
+		zoneName := p.endpointZoneName(ep, p.domainFilter.Filters)
 		if zoneName == "" {
 			p.logger.Debug().Str("type", "updateOld").Str("endpoint", ep.String()).Msg("Ignoring change since it did not match any zone")
 			continue
@@ -175,7 +175,7 @@ func (p *PorkbunProvider) ApplyChanges(ctx context.Context, changes *plan.Change
 	}
 
 	for _, ep := range changes.UpdateNew {
-		zoneName := endpointZoneName(ep, p.domainFilter.Filters)
+		zoneName := p.endpointZoneName(ep, p.domainFilter.Filters)
 		if zoneName == "" {
 			p.logger.Debug().Str("type", "updateNew").Str("endpoint", ep.String()).Msg("Ignoring change since it did not match any zone")
 			continue
@@ -185,7 +185,7 @@ func (p *PorkbunProvider) ApplyChanges(ctx context.Context, changes *plan.Change
 	}
 
 	for _, ep := range changes.Delete {
-		zoneName := endpointZoneName(ep, p.domainFilter.Filters)
+		zoneName := p.endpointZoneName(ep, p.domainFilter.Filters)
 		if zoneName == "" {
 			p.logger.Debug().Str("type", "delete").Str("endpoint", ep.String()).Msg("Ignoring change since it did not match any zone")
 			continue
@@ -204,10 +204,10 @@ func (p *PorkbunProvider) ApplyChanges(ctx context.Context, changes *plan.Change
 		}
 
 		change := &PorkbunChange{
-			Create:    convertToPorkbunRecord(&recs, c.Create, zoneName),
-			UpdateNew: convertToPorkbunRecord(&recs, c.UpdateNew, zoneName),
-			UpdateOld: convertToPorkbunRecord(&recs, c.UpdateOld, zoneName),
-			Delete:    convertToPorkbunRecord(&recs, c.Delete, zoneName),
+			Create:    p.convertToPorkbunRecord(&recs, c.Create, zoneName),
+			UpdateNew: p.convertToPorkbunRecord(&recs, c.UpdateNew, zoneName),
+			UpdateOld: p.convertToPorkbunRecord(&recs, c.UpdateOld, zoneName),
+			Delete:    p.convertToPorkbunRecord(&recs, c.Delete, zoneName),
 		}
 
 		_, err = p.UpdateDnsRecords(ctx, zoneName, change.UpdateOld)
@@ -235,10 +235,11 @@ func (p *PorkbunProvider) ApplyChanges(ctx context.Context, changes *plan.Change
 
 // convertToPorkbunRecord transforms a list of endpoints into a list of Porkbun DNS Records
 // returns a pointer to a list of DNS Records
-func convertToPorkbunRecord(recs *[]pb.Record, endpoints []*endpoint.Endpoint, zoneName string) *[]pb.Record {
+func (p *PorkbunProvider) convertToPorkbunRecord(recs *[]pb.Record, endpoints []*endpoint.Endpoint, zoneName string) *[]pb.Record {
 	records := make([]pb.Record, len(endpoints))
 
 	for i, ep := range endpoints {
+		p.logger.Debug().Str("endpoint", fmt.Sprintf("%+v", ep)).Msg("Converting endpoint to PorkbunRecord")
 		recordName := strings.TrimSuffix(ep.DNSName, "."+zoneName)
 		if recordName == zoneName {
 			recordName = "@"
@@ -252,7 +253,7 @@ func convertToPorkbunRecord(recs *[]pb.Record, endpoints []*endpoint.Endpoint, z
 			Type:    ep.RecordType,
 			Name:    recordName,
 			Content: target,
-			ID:      getIDforRecord(recordName, target, ep.RecordType, recs),
+			ID:      p.getIDforRecord(recordName, target, ep.RecordType, recs),
 		}
 	}
 	return &records
@@ -260,7 +261,8 @@ func convertToPorkbunRecord(recs *[]pb.Record, endpoints []*endpoint.Endpoint, z
 
 // getIDforRecord compares the endpoint with existing records to get the ID from Porkbun to ensure it can be safely removed.
 // returns empty string if no match found
-func getIDforRecord(recordName string, target string, recordType string, recs *[]pb.Record) string {
+func (p *PorkbunProvider) getIDforRecord(recordName string, target string, recordType string, recs *[]pb.Record) string {
+	p.logger.Debug().Str("recordName", recordName).Str("target", target).Str("recordType", recordType).Str("recs", fmt.Sprintf("%+v", recs)).Msg("Getting ID for record")
 	for _, rec := range *recs {
 		if recordType == rec.Type && target == rec.Content && rec.Name == recordName {
 			return rec.ID
@@ -272,7 +274,7 @@ func getIDforRecord(recordName string, target string, recordType string, recs *[
 
 // endpointZoneName determines zoneName for endpoint by taking longest suffix zoneName match in endpoint DNSName
 // returns empty string if no match found
-func endpointZoneName(endpoint *endpoint.Endpoint, zones []string) (zone string) {
+func (p *PorkbunProvider) endpointZoneName(endpoint *endpoint.Endpoint, zones []string) (zone string) {
 	var matchZoneName string = ""
 	for _, zoneName := range zones {
 		if strings.HasSuffix(endpoint.DNSName, zoneName) && len(zoneName) > len(matchZoneName) {
