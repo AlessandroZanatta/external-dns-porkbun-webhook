@@ -1,3 +1,10 @@
+## [1.0.2-dev.2](https://github.com/AlessandroZanatta/external-dns-porkbun-webhook/compare/v1.0.2-dev.1...v1.0.2-dev.2) (2025-10-02)
+
+
+### Bug Fixes
+
+* getIDForRecord incorrect argument ([5941ca4](https://github.com/AlessandroZanatta/external-dns-porkbun-webhook/commit/5941ca4a62994f60ec1e6485d37c69283da80365))
+
 ## [1.0.2-dev.1](https://github.com/AlessandroZanatta/external-dns-porkbun-webhook/compare/v1.0.1...v1.0.2-dev.1) (2025-10-02)
 
 
