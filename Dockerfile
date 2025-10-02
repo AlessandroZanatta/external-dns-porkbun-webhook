@@ -1,8 +1,8 @@
 FROM golang:1.23.6-alpine3.20 AS builder
+
 WORKDIR /app
 COPY . /app
-
-RUN apk --no-cache add make git && make build
+RUN go build . 
 
 FROM alpine:3.22
 
