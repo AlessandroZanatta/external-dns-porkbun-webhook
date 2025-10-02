@@ -57,7 +57,9 @@ func NewPorkbunProvider(domainFilterList *[]string, apiKey string, secretKey str
 
 func (p *PorkbunProvider) CreateDnsRecords(ctx context.Context, zone string, records *[]pb.Record) (string, error) {
 	for _, record := range *records {
+		p.logger.Debug().Str("zone", zone).Str("record", fmt.Sprintf("%+v", record)).Msg("Creating new record")
 		_, err := p.client.CreateRecord(ctx, zone, record)
+		p.logger.Debug().Str("zone", zone).Str("record", fmt.Sprintf("%+v", record)).Msg("Record created successfully")
 		if err != nil {
 			p.logger.Error().Err(err).Str("zone", zone).Str("record", fmt.Sprintf("%+v", record)).Msg("Failed to create record")
 			return "", fmt.Errorf("unable to create record: %v", err)
@@ -68,11 +70,13 @@ func (p *PorkbunProvider) CreateDnsRecords(ctx context.Context, zone string, rec
 
 func (p *PorkbunProvider) DeleteDnsRecords(ctx context.Context, zone string, records *[]pb.Record) (string, error) {
 	for _, record := range *records {
+		p.logger.Debug().Str("zone", zone).Str("record", fmt.Sprintf("%+v", record)).Msg("Deleting record")
 		id, err := strconv.Atoi(record.ID)
 		if err != nil {
 			return "", fmt.Errorf("unable to parse record ID: %v", err)
 		}
 		err = p.client.DeleteRecord(ctx, zone, id)
+		p.logger.Debug().Str("zone", zone).Str("record", fmt.Sprintf("%+v", record)).Msg("Record deleted successfully")
 		if err != nil {
 			p.logger.Error().Err(err).Str("zone", zone).Int("id", id).Str("record", fmt.Sprintf("%+v", record)).Msg("Failed to delete record")
 			return "", fmt.Errorf("unable to delete record: %v", err)
@@ -83,11 +87,13 @@ func (p *PorkbunProvider) DeleteDnsRecords(ctx context.Context, zone string, rec
 
 func (p *PorkbunProvider) UpdateDnsRecords(ctx context.Context, zone string, records *[]pb.Record) (string, error) {
 	for _, record := range *records {
+		p.logger.Debug().Str("zone", zone).Str("record", fmt.Sprintf("%+v", record)).Msg("Updating record")
 		id, err := strconv.Atoi(record.ID)
 		if err != nil {
 			return "", fmt.Errorf("unable to parse record ID: %v", err)
 		}
 		err = p.client.EditRecord(ctx, zone, id, record)
+		p.logger.Debug().Str("zone", zone).Str("record", fmt.Sprintf("%+v", record)).Msg("Record updated successfully")
 		if err != nil {
 			p.logger.Error().Err(err).Str("zone", zone).Int("id", id).Str("record", fmt.Sprintf("%+v", record)).Msg("Failed to update record")
 			return "", fmt.Errorf("unable to update record: %v", err)
@@ -101,6 +107,7 @@ func (p *PorkbunProvider) Records(ctx context.Context) ([]*endpoint.Endpoint, er
 	endpoints := make([]*endpoint.Endpoint, 0)
 
 	for _, domain := range p.domainFilter.Filters {
+		p.logger.Debug().Str("domain", domain).Msg("Retrieving records for domain")
 		records, err := p.client.RetrieveRecords(ctx, domain)
 		if err != nil {
 			return nil, fmt.Errorf("unable to query DNS zone info for domain '%v': %v", domain, err)
