@@ -253,7 +253,7 @@ func (p *PorkbunProvider) convertToPorkbunRecord(recs *[]pb.Record, endpoints []
 			Type:    ep.RecordType,
 			Name:    recordName,
 			Content: target,
-			ID:      p.getIDforRecord(recordName, target, ep.RecordType, recs),
+			ID:      p.getIDforRecord(ep.DNSName, target, ep.RecordType, recs),
 		}
 	}
 	return &records
