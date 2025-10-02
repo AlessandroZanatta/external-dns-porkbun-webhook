@@ -1,3 +1,12 @@
+## [1.0.3-dev.1](https://github.com/AlessandroZanatta/external-dns-porkbun-webhook/compare/v1.0.2...v1.0.3-dev.1) (2025-10-02)
+
+
+### Bug Fixes
+
+* add more debug logging ([8f571fb](https://github.com/AlessandroZanatta/external-dns-porkbun-webhook/commit/8f571fbbd40cda4165148e8772389904942b2abe))
+* getIDForRecord incorrect argument ([5941ca4](https://github.com/AlessandroZanatta/external-dns-porkbun-webhook/commit/5941ca4a62994f60ec1e6485d37c69283da80365))
+* remove excessive debug logging ([132dab8](https://github.com/AlessandroZanatta/external-dns-porkbun-webhook/commit/132dab85c79df71a4fe62b928f24eb522a88a2b6))
+
 ## [1.0.2](https://github.com/AlessandroZanatta/external-dns-porkbun-webhook/compare/v1.0.1...v1.0.2) (2025-10-02)
 
 
