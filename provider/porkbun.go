@@ -18,7 +18,7 @@ import (
 type PorkbunProvider struct {
 	provider.BaseProvider
 	client       *pb.Client
-	domainFilter endpoint.DomainFilter
+	domainFilter *endpoint.DomainFilter
 	logger       zerolog.Logger
 }
 

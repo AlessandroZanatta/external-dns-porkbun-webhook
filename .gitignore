@@ -20,7 +20,7 @@
 # Go workspace file
 go.work
 
-external-dns-netcup-webhook
+external-dns-porkbun-webhook
 
 .husky
 node_modules
