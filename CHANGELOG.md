@@ -1,3 +1,10 @@
+## [1.0.4](https://github.com/AlessandroZanatta/external-dns-porkbun-webhook/compare/v1.0.3...v1.0.4) (2026-10-20)
+
+
+### Bug Fixes
+
+* update records in place using old record ID ([0ae5405](https://github.com/AlessandroZanatta/external-dns-porkbun-webhook/commit/0ae54056d9655072ca89c27cfc488411b0993c7f))
+
 ## [1.0.3](https://github.com/AlessandroZanatta/external-dns-porkbun-webhook/compare/v1.0.2...v1.0.3) (2025-10-02)
 
 
