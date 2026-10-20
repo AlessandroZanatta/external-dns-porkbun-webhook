@@ -210,10 +210,6 @@ func (p *PorkbunProvider) ApplyChanges(ctx context.Context, changes *plan.Change
 			Delete:    p.convertToPorkbunRecord(&recs, c.Delete, zoneName),
 		}
 
-		_, err = p.UpdateDnsRecords(ctx, zoneName, change.UpdateOld)
-		if err != nil {
-			return err
-		}
 		_, err = p.DeleteDnsRecords(ctx, zoneName, change.Delete)
 		if err != nil {
 			return err
@@ -222,7 +218,7 @@ func (p *PorkbunProvider) ApplyChanges(ctx context.Context, changes *plan.Change
 		if err != nil {
 			return err
 		}
-		_, err = p.UpdateDnsRecords(ctx, zoneName, change.UpdateNew)
+		_, err = p.UpdateDnsRecords(ctx, zoneName, pairUpdates(change.UpdateOld, change.UpdateNew))
 		if err != nil {
 			return err
 		}
@@ -269,6 +265,23 @@ func (p *PorkbunProvider) getIDForRecord(recordName string, target string, recor
 	}
 
 	return ""
+}
+
+// pairUpdates copies the Porkbun record ID from each old record onto the new record
+// with the same name and type: only the old content exists in Porkbun, so only it
+// resolves to an ID, and EditRecord updates that record in place.
+func pairUpdates(oldRecs, newRecs *[]pb.Record) *[]pb.Record {
+	paired := make([]pb.Record, 0, len(*newRecs))
+	for _, n := range *newRecs {
+		for _, o := range *oldRecs {
+			if o.Name == n.Name && o.Type == n.Type && o.ID != "" {
+				n.ID = o.ID
+				break
+			}
+		}
+		paired = append(paired, n)
+	}
+	return &paired
 }
 
 // endpointZoneName determines zoneName for endpoint by taking longest suffix zoneName match in endpoint DNSName
