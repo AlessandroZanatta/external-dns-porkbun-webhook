@@ -3,6 +3,31 @@
   "extends": [
     "config:recommended",
     ":semanticCommits",
-    ":semanticPrefixFixDepsChoreOthers"
+    ":semanticPrefixFixDepsChoreOthers",
+    "helpers:pinGitHubActionDigests",
+    ":automergeMinor",
+    ":automergeDigest"
+  ],
+  "schedule": ["before 6am on monday"],
+  "postUpdateOptions": ["gomodTidy", "gomodUpdateImportPaths"],
+  "packageRules": [
+    {
+      "matchManagers": ["github-actions"],
+      "groupName": "github actions",
+      "automerge": true
+    },
+    {
+      "matchManagers": ["gomod"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "go dependencies"
+    },
+    {
+      "matchManagers": ["dockerfile"],
+      "groupName": "docker base images"
+    },
+    {
+      "matchDepNames": ["go", "golang"],
+      "groupName": "go toolchain"
+    }
   ]
 }
