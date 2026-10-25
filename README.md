@@ -96,7 +96,7 @@ spec:
             - --registry=txt
             - --txt-owner-id=external-dns
         - name: external-dns-webhook-provider
-          image: ghcr.io/alessandrozanatta/external-dns-porkbun-webhook:1.0.4 # x-release-please-version
+          image: ghcr.io/alessandrozanatta/external-dns-porkbun-webhook:1.1.0 # x-release-please-version
           imagePullPolicy: Always
           args:
             - --log.level=debug
