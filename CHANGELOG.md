@@ -5,6 +5,20 @@
 
 * update records in place using old record ID ([0ae5405](https://github.com/AlessandroZanatta/external-dns-porkbun-webhook/commit/0ae54056d9655072ca89c27cfc488411b0993c7f))
 
+## [1.0.5](https://github.com/AlessandroZanatta/external-dns-porkbun-webhook/compare/v1.0.4...v1.0.5) (2026-10-25)
+
+
+### Bug Fixes
+
+* provider bugs ([6790014](https://github.com/AlessandroZanatta/external-dns-porkbun-webhook/commit/6790014f9498e640be1dc5a2769b6d7c480b4d7c))
+* reconcile Porkbun records correctly ([b618187](https://github.com/AlessandroZanatta/external-dns-porkbun-webhook/commit/b618187b87e6558cc9c09a7c53d24938f3fafd6a))
+* shut down the webhook server gracefully ([440ff4f](https://github.com/AlessandroZanatta/external-dns-porkbun-webhook/commit/440ff4fca0cd93124fc5d3232a5dca8076fff7b7))
+
+
+### Documentation
+
+* fix webhook flags in README example ([2ef3cea](https://github.com/AlessandroZanatta/external-dns-porkbun-webhook/commit/2ef3cea8f4b9c6a2625aee45a30e2a57f6186470))
+
 ## [1.0.3](https://github.com/AlessandroZanatta/external-dns-porkbun-webhook/compare/v1.0.2...v1.0.3) (2025-10-02)
 
 
