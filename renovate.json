@@ -8,25 +8,43 @@
     ":automergeMinor",
     ":automergeDigest"
   ],
-  "schedule": ["before 6am on monday"],
-  "postUpdateOptions": ["gomodTidy", "gomodUpdateImportPaths"],
+  "schedule": [
+    "before 6am on monday"
+  ],
+  "platformAutomerge": false,
+  "postUpdateOptions": [
+    "gomodTidy",
+    "gomodUpdateImportPaths"
+  ],
   "packageRules": [
     {
-      "matchManagers": ["github-actions"],
+      "matchManagers": [
+        "github-actions"
+      ],
       "groupName": "github actions",
       "automerge": true
     },
     {
-      "matchManagers": ["gomod"],
-      "matchUpdateTypes": ["minor", "patch"],
+      "matchManagers": [
+        "gomod"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch"
+      ],
       "groupName": "go dependencies"
     },
     {
-      "matchManagers": ["dockerfile"],
+      "matchManagers": [
+        "dockerfile"
+      ],
       "groupName": "docker base images"
     },
     {
-      "matchDepNames": ["go", "golang"],
+      "matchDepNames": [
+        "go",
+        "golang"
+      ],
       "groupName": "go toolchain"
     }
   ]
