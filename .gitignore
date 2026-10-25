@@ -21,6 +21,3 @@
 go.work
 
 external-dns-porkbun-webhook
-
-.husky
-node_modules
