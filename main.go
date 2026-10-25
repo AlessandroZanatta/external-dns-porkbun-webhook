@@ -1,10 +1,14 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"io"
 	"net/http"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	porkbun "github.com/AlessandroZanatta/external-dns-porkbun-webhook/provider"
@@ -12,6 +16,7 @@ import (
 	"github.com/alecthomas/kingpin/v2"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"sigs.k8s.io/external-dns/provider"
 	webhook "sigs.k8s.io/external-dns/provider/webhook/api"
 )
 
@@ -49,24 +54,40 @@ func main() {
 	log.Info().Msg("starting external-dns Porkbun webhook plugin")
 	log.Debug().Str("api-key", strings.Repeat("*", len(*apiKey))).Str("api-password", strings.Repeat("*", len(*secretKey))).Msg("Configuration")
 
-	webhookMux, err := buildWebhookServer(log.Logger)
+	porkbunProvider, err := porkbun.NewPorkbunProvider(*domainFilter, *apiKey, *secretKey, log.Logger)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to create provider")
 	}
 	webhookServer := http.Server{
 		Addr:              *listenAddr,
-		Handler:           webhookMux,
+		Handler:           buildWebhookServer(porkbunProvider),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	serveErr := make(chan error, 1)
+	go func() {
+		serveErr <- webhookServer.ListenAndServe()
+	}()
 	log.Info().Str("address", *listenAddr).Msg("Started external-dns-porkbun-webhook webhook server")
-	err = webhookServer.ListenAndServe()
-	if err != nil {
+
+	select {
+	case err := <-serveErr:
 		log.Fatal().Err(err).Msg("Failed to start the webhook server")
+	case <-ctx.Done():
+	}
+
+	log.Info().Msg("Shutting down webhook server")
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := webhookServer.Shutdown(shutdownCtx); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		log.Error().Err(err).Msg("Failed to shut down the webhook server cleanly")
 	}
 }
 
-func buildWebhookServer(logger zerolog.Logger) (*http.ServeMux, error) {
+func buildWebhookServer(p provider.Provider) *http.ServeMux {
 	mux := http.NewServeMux()
 
 	var rootPath = "/"
@@ -74,13 +95,8 @@ func buildWebhookServer(logger zerolog.Logger) (*http.ServeMux, error) {
 	var recordsPath = "/records"
 	var adjustEndpointsPath = "/adjustendpoints"
 
-	ncProvider, err := porkbun.NewPorkbunProvider(domainFilter, *apiKey, *secretKey, logger)
-	if err != nil {
-		return nil, err
-	}
-
-	p := webhook.WebhookServer{
-		Provider: ncProvider,
+	server := webhook.WebhookServer{
+		Provider: p,
 	}
 
 	// Add healthzPath
@@ -90,11 +106,11 @@ func buildWebhookServer(logger zerolog.Logger) (*http.ServeMux, error) {
 	})
 
 	// Add negotiatePath
-	mux.HandleFunc(rootPath, p.NegotiateHandler)
+	mux.HandleFunc(rootPath, server.NegotiateHandler)
 	// Add adjustEndpointsPath
-	mux.HandleFunc(adjustEndpointsPath, p.AdjustEndpointsHandler)
+	mux.HandleFunc(adjustEndpointsPath, server.AdjustEndpointsHandler)
 	// Add recordsPath
-	mux.HandleFunc(recordsPath, p.RecordsHandler)
+	mux.HandleFunc(recordsPath, server.RecordsHandler)
 
-	return mux, nil
+	return mux
 }
