@@ -21,7 +21,7 @@ You can get an api and secret key for your user on the Porkbun administration pa
 
 ### Deploy external-dns with the webhook
 
-Besides the API key and password, it is mandatory to provide a customer id as well as a list of DNS zones you want external-dns to manage. The hosted DNS zones will be provides via the `--domain-filter`.
+Besides the API key and secret key, it is mandatory to provide the list of DNS zones you want external-dns to manage via `--domain-filter` (repeat the flag for multiple zones).
 
 You can then modify the following base manifest to fit your specific use case (may vary based on source, the example below uses Traefik CRDs as sources):
 
@@ -99,7 +99,7 @@ spec:
           image: ghcr.io/alessandrozanatta/external-dns-porkbun-webhook:1.0.4 # x-release-please-version
           imagePullPolicy: Always
           args:
-            - --log.level=debug
+            - --log-level=debug
             - --domain-filter=YOUR_DOMAIN
           env:
             - name: PORKBUN_API_KEY
@@ -115,6 +115,22 @@ spec:
 ```
 
 You can then follow the external-dns docs on how to configure your specific source.
+
+### Webhook options
+
+| Flag | Environment variable | Default | Description |
+| --- | --- | --- | --- |
+| `--domain-filter` | `PORKBUN_DOMAIN_FILTER` | (required) | Zone to manage; repeat for multiple zones |
+| `--porkbun-api-key` | `PORKBUN_API_KEY` | (required) | Porkbun API key |
+| `--porkbun-api-secret` | `PORKBUN_SECRET_KEY` | (required) | Porkbun secret API key |
+| `--listen-address` | `PORKBUN_LISTEN_ADDRESS` | `:8888` | Address the webhook listens on |
+| `--log-level` | `LOG_LEVEL` | `info` | One of `panic`, `fatal`, `error`, `warn`, `info`, `debug`, `trace` |
+| `--log-method` | `LOG_METHOD` | `console` | `console` or `json` |
+
+### Notes
+
+- Porkbun's minimum TTL is 600 seconds. Lower TTLs requested through external-dns are raised to 600; records without a TTL use Porkbun's default.
+- Records with multiple targets (e.g. several A records for the same name) are supported.
 
 ### Verifying Porkbun DNS records
 
