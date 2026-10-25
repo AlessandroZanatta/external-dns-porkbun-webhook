@@ -4,7 +4,7 @@ WORKDIR /app
 COPY . /app
 RUN go build . 
 
-FROM alpine:3.22
+FROM alpine:3.24
 
 COPY --from=builder /app/external-dns-porkbun-webhook /
 ENTRYPOINT ["/external-dns-porkbun-webhook"]
