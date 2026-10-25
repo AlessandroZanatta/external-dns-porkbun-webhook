@@ -2,7 +2,10 @@ package porkbun
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -14,6 +17,9 @@ import (
 	"sigs.k8s.io/external-dns/provider"
 )
 
+// minTTL is the lowest TTL Porkbun accepts; lower values are raised to it.
+const minTTL = 600
+
 // PorkbunProvider is an implementation of Provider for Porkbun DNS.
 type PorkbunProvider struct {
 	provider.BaseProvider
@@ -22,119 +28,106 @@ type PorkbunProvider struct {
 	logger       zerolog.Logger
 }
 
-// PorkbunChange includes the changesets that need to be applied to the Porkbun API
-type PorkbunChange struct {
-	Create    *[]pb.Record
-	UpdateNew *[]pb.Record
-	UpdateOld *[]pb.Record
-	Delete    *[]pb.Record
+// Option customizes a PorkbunProvider.
+type Option func(*PorkbunProvider)
+
+// WithBaseURL points the provider at a different Porkbun API endpoint.
+func WithBaseURL(u *url.URL) Option {
+	return func(p *PorkbunProvider) {
+		p.client.BaseURL = u
+	}
 }
 
 // NewPorkbunProvider creates a new provider for the Porkbun API
-func NewPorkbunProvider(domainFilterList *[]string, apiKey string, secretKey string, logger zerolog.Logger) (*PorkbunProvider, error) {
-	domainFilter := endpoint.NewDomainFilter(*domainFilterList)
+func NewPorkbunProvider(domainFilterList []string, apiKey string, secretKey string, logger zerolog.Logger, opts ...Option) (*PorkbunProvider, error) {
+	domainFilter := endpoint.NewDomainFilter(domainFilterList)
 
 	if !domainFilter.IsConfigured() {
-		return nil, fmt.Errorf("porkbun provider requires at least one configured domain in the domainFilter")
+		return nil, errors.New("porkbun provider requires at least one configured domain in the domainFilter")
 	}
 
 	if apiKey == "" {
-		return nil, fmt.Errorf("porkbun provider requires an API Key")
+		return nil, errors.New("porkbun provider requires an API Key")
 	}
 
 	if secretKey == "" {
-		return nil, fmt.Errorf("porkbun provider requires a secret Key")
+		return nil, errors.New("porkbun provider requires a secret Key")
 	}
 
-	client := pb.New(secretKey, apiKey)
-
-	return &PorkbunProvider{
-		client:       client,
+	p := &PorkbunProvider{
+		client:       pb.New(secretKey, apiKey),
 		domainFilter: domainFilter,
 		logger:       logger,
-	}, nil
+	}
+	for _, opt := range opts {
+		opt(p)
+	}
+	return p, nil
 }
 
-func (p *PorkbunProvider) CreateDnsRecords(ctx context.Context, zone string, records *[]pb.Record) (string, error) {
-	for _, record := range *records {
-		p.logger.Debug().Str("zone", zone).Str("record", fmt.Sprintf("%+v", record)).Msg("Creating new record")
-		_, err := p.client.CreateRecord(ctx, zone, record)
-		p.logger.Debug().Str("zone", zone).Str("record", fmt.Sprintf("%+v", record)).Msg("Record created successfully")
-		if err != nil {
-			p.logger.Error().Err(err).Str("zone", zone).Str("record", fmt.Sprintf("%+v", record)).Msg("Failed to create record")
-			return "", fmt.Errorf("unable to create record: %v", err)
+// GetDomainFilter returns the configured domain filter, which external-dns
+// receives during webhook negotiation.
+func (p *PorkbunProvider) GetDomainFilter() endpoint.DomainFilterInterface {
+	return p.domainFilter
+}
+
+// AdjustEndpoints raises TTLs below the Porkbun minimum, so that the TTL
+// external-dns plans with matches the one Porkbun stores.
+func (p *PorkbunProvider) AdjustEndpoints(endpoints []*endpoint.Endpoint) ([]*endpoint.Endpoint, error) {
+	for _, ep := range endpoints {
+		if ep.RecordTTL.IsConfigured() && ep.RecordTTL < minTTL {
+			ep.RecordTTL = minTTL
 		}
 	}
-	return "", nil
+	return endpoints, nil
 }
 
-func (p *PorkbunProvider) DeleteDnsRecords(ctx context.Context, zone string, records *[]pb.Record) (string, error) {
-	for _, record := range *records {
-		p.logger.Debug().Str("zone", zone).Str("record", fmt.Sprintf("%+v", record)).Msg("Deleting record")
-		id, err := strconv.Atoi(record.ID)
-		if err != nil {
-			return "", fmt.Errorf("unable to parse record ID: %v", err)
-		}
-		err = p.client.DeleteRecord(ctx, zone, id)
-		p.logger.Debug().Str("zone", zone).Str("record", fmt.Sprintf("%+v", record)).Msg("Record deleted successfully")
-		if err != nil {
-			p.logger.Error().Err(err).Str("zone", zone).Int("id", id).Str("record", fmt.Sprintf("%+v", record)).Msg("Failed to delete record")
-			return "", fmt.Errorf("unable to delete record: %v", err)
-		}
-	}
-	return "", nil
+// recordKey identifies all Porkbun records that make up a single endpoint.
+type recordKey struct {
+	name       string
+	recordType string
 }
 
-func (p *PorkbunProvider) UpdateDnsRecords(ctx context.Context, zone string, records *[]pb.Record) (string, error) {
-	for _, record := range *records {
-		p.logger.Debug().Str("zone", zone).Str("record", fmt.Sprintf("%+v", record)).Msg("Updating record")
-		id, err := strconv.Atoi(record.ID)
-		if err != nil {
-			return "", fmt.Errorf("unable to parse record ID: %v", err)
-		}
-		err = p.client.EditRecord(ctx, zone, id, record)
-		p.logger.Debug().Str("zone", zone).Str("record", fmt.Sprintf("%+v", record)).Msg("Record updated successfully")
-		if err != nil {
-			p.logger.Error().Err(err).Str("zone", zone).Int("id", id).Str("record", fmt.Sprintf("%+v", record)).Msg("Failed to update record")
-			return "", fmt.Errorf("unable to update record: %v", err)
-		}
-	}
-	return "", nil
-}
-
-// Records delivers the list of Endpoint records for all zones.
+// Records delivers the list of Endpoint records for all zones. Porkbun
+// records sharing a name and type are merged into one endpoint with
+// multiple targets.
 func (p *PorkbunProvider) Records(ctx context.Context) ([]*endpoint.Endpoint, error) {
-	endpoints := make([]*endpoint.Endpoint, 0)
+	var endpoints []*endpoint.Endpoint
 
-	for _, domain := range p.domainFilter.Filters {
-		p.logger.Debug().Str("domain", domain).Msg("Retrieving records for domain")
-		records, err := p.client.RetrieveRecords(ctx, domain)
+	for _, zone := range p.domainFilter.Filters {
+		p.logger.Debug().Str("zone", zone).Msg("Retrieving records for zone")
+		recs, err := p.client.RetrieveRecords(ctx, zone)
 		if err != nil {
-			return nil, fmt.Errorf("unable to query DNS zone info for domain '%v': %v", domain, err)
+			return nil, fmt.Errorf("unable to query DNS zone info for domain '%v': %w", zone, err)
 		}
-		p.logger.Info().Str("domain", domain).Msg("Got DNS records for domain")
 
-		for _, rec := range records {
-			p.logger.Debug().Str("record", fmt.Sprintf("%+v", rec)).Msg("Processing record")
-			name := rec.Name
-			if strings.Split(rec.Name, ".")[0] == "@" {
-				name = domain
+		byKey := map[recordKey]*endpoint.Endpoint{}
+		for _, rec := range recs {
+			key := recordKey{normalizeName(rec.Name), rec.Type}
+			if ep, ok := byKey[key]; ok {
+				ep.Targets = append(ep.Targets, rec.Content)
+				continue
 			}
 
 			ttl, err := strconv.Atoi(rec.TTL)
 			if err != nil {
-				return nil, fmt.Errorf("unable to parse TTL value: %v", err)
+				return nil, fmt.Errorf("unable to parse TTL value %q of record %s: %w", rec.TTL, rec.ID, err)
 			}
-
-			ep := endpoint.NewEndpointWithTTL(name, rec.Type, endpoint.TTL(ttl), rec.Content)
+			ep := endpoint.NewEndpointWithTTL(key.name, rec.Type, endpoint.TTL(ttl), rec.Content)
+			byKey[key] = ep
 			endpoints = append(endpoints, ep)
 		}
 	}
 
-	for _, endpointItem := range endpoints {
-		p.logger.Debug().Str("endpoints", endpointItem.String()).Msg("Endpoints collected")
+	for _, ep := range endpoints {
+		p.logger.Debug().Str("endpoint", ep.String()).Msg("Endpoint collected")
 	}
 	return endpoints, nil
+}
+
+// zoneChanges holds the changes that fall into a single zone.
+type zoneChanges struct {
+	create, update, delete []*endpoint.Endpoint
 }
 
 // ApplyChanges applies a given set of changes in a given zone.
@@ -144,154 +137,246 @@ func (p *PorkbunProvider) ApplyChanges(ctx context.Context, changes *plan.Change
 		return nil
 	}
 
-	perZoneChanges := map[string]*plan.Changes{}
-
-	for _, zoneName := range p.domainFilter.Filters {
-		p.logger.Debug().Str("zone", zoneName).Msg("Zone detected")
-
-		perZoneChanges[zoneName] = &plan.Changes{}
+	perZone := map[string]*zoneChanges{}
+	group := func(kind string, eps []*endpoint.Endpoint, add func(*zoneChanges, *endpoint.Endpoint)) {
+		for _, ep := range eps {
+			zone := endpointZoneName(ep.DNSName, p.domainFilter.Filters)
+			if zone == "" {
+				p.logger.Debug().Str("type", kind).Str("endpoint", ep.String()).Msg("Ignoring change since it did not match any zone")
+				continue
+			}
+			p.logger.Debug().Str("type", kind).Str("endpoint", ep.String()).Str("zone", zone).Msg("Planning")
+			if perZone[zone] == nil {
+				perZone[zone] = &zoneChanges{}
+			}
+			add(perZone[zone], ep)
+		}
 	}
+	group("create", changes.Create, func(c *zoneChanges, ep *endpoint.Endpoint) { c.create = append(c.create, ep) })
+	group("update", changes.UpdateNew, func(c *zoneChanges, ep *endpoint.Endpoint) { c.update = append(c.update, ep) })
+	group("delete", changes.Delete, func(c *zoneChanges, ep *endpoint.Endpoint) { c.delete = append(c.delete, ep) })
 
-	for _, ep := range changes.Create {
-		zoneName := p.endpointZoneName(ep, p.domainFilter.Filters)
-		if zoneName == "" {
-			p.logger.Debug().Str("type", "create").Str("endpoint", ep.String()).Msg("Ignoring change since it did not match any zone")
-			continue
-		}
-		p.logger.Debug().Str("type", "create").Str("endpoint", ep.String()).Str("zone", zoneName).Msg("Planning")
-
-		perZoneChanges[zoneName].Create = append(perZoneChanges[zoneName].Create, ep)
+	// Process zones in a stable order; zones without changes are never queried.
+	zones := make([]string, 0, len(perZone))
+	for zone := range perZone {
+		zones = append(zones, zone)
 	}
+	slices.Sort(zones)
 
-	for _, ep := range changes.UpdateOld {
-		zoneName := p.endpointZoneName(ep, p.domainFilter.Filters)
-		if zoneName == "" {
-			p.logger.Debug().Str("type", "updateOld").Str("endpoint", ep.String()).Msg("Ignoring change since it did not match any zone")
-			continue
-		}
-		p.logger.Debug().Str("type", "updateOld").Str("endpoint", ep.String()).Str("zone", zoneName).Msg("Planning")
-
-		perZoneChanges[zoneName].UpdateOld = append(perZoneChanges[zoneName].UpdateOld, ep)
-	}
-
-	for _, ep := range changes.UpdateNew {
-		zoneName := p.endpointZoneName(ep, p.domainFilter.Filters)
-		if zoneName == "" {
-			p.logger.Debug().Str("type", "updateNew").Str("endpoint", ep.String()).Msg("Ignoring change since it did not match any zone")
-			continue
-		}
-		p.logger.Debug().Str("type", "updateNew").Str("endpoint", ep.String()).Str("zone", zoneName).Msg("Planning")
-		perZoneChanges[zoneName].UpdateNew = append(perZoneChanges[zoneName].UpdateNew, ep)
-	}
-
-	for _, ep := range changes.Delete {
-		zoneName := p.endpointZoneName(ep, p.domainFilter.Filters)
-		if zoneName == "" {
-			p.logger.Debug().Str("type", "delete").Str("endpoint", ep.String()).Msg("Ignoring change since it did not match any zone")
-			continue
-		}
-		p.logger.Debug().Str("type", "delete").Str("endpoint", ep.String()).Str("zone", zoneName).Msg("Planning")
-		perZoneChanges[zoneName].Delete = append(perZoneChanges[zoneName].Delete, ep)
-	}
-
-	// Assemble changes per zone and prepare it for the Porkbun API client
-	for zoneName, c := range perZoneChanges {
-		// Gather records from API to extract the record ID which is necessary for updating/deleting the record
-		recs, err := p.client.RetrieveRecords(ctx, zoneName)
-		if err != nil {
-			p.logger.Error().Err(err).Str("zone", zoneName).Msg("unable to get DNS records for domain")
-			return err
-		}
-
-		change := &PorkbunChange{
-			Create:    p.convertToPorkbunRecord(&recs, c.Create, zoneName),
-			UpdateNew: p.convertToPorkbunRecord(&recs, c.UpdateNew, zoneName),
-			UpdateOld: p.convertToPorkbunRecord(&recs, c.UpdateOld, zoneName),
-			Delete:    p.convertToPorkbunRecord(&recs, c.Delete, zoneName),
-		}
-
-		_, err = p.DeleteDnsRecords(ctx, zoneName, change.Delete)
-		if err != nil {
-			return err
-		}
-		_, err = p.CreateDnsRecords(ctx, zoneName, change.Create)
-		if err != nil {
-			return err
-		}
-		_, err = p.UpdateDnsRecords(ctx, zoneName, pairUpdates(change.UpdateOld, change.UpdateNew))
-		if err != nil {
+	for _, zone := range zones {
+		if err := p.applyZoneChanges(ctx, zone, perZone[zone]); err != nil {
 			return err
 		}
 	}
 
 	p.logger.Debug().Msg("Update completed")
+	return nil
+}
+
+// applyZoneChanges reconciles a zone's changes against the records Porkbun
+// currently holds. Updates and deletes look records up by name, type and
+// content, so they do not depend on the old endpoint matching Porkbun exactly.
+func (p *PorkbunProvider) applyZoneChanges(ctx context.Context, zone string, c *zoneChanges) error {
+	recs, err := p.client.RetrieveRecords(ctx, zone)
+	if err != nil {
+		return fmt.Errorf("unable to get DNS records for domain '%v': %w", zone, err)
+	}
+	live := map[recordKey][]pb.Record{}
+	for _, rec := range recs {
+		key := recordKey{normalizeName(rec.Name), rec.Type}
+		live[key] = append(live[key], rec)
+	}
+
+	for _, ep := range c.delete {
+		key := endpointKey(ep)
+		for _, target := range ep.Targets {
+			content := recordContent(ep.RecordType, target)
+			i := slices.IndexFunc(live[key], func(r pb.Record) bool { return sameContent(ep.RecordType, r.Content, content) })
+			if i < 0 {
+				p.logger.Warn().Str("zone", zone).Str("endpoint", ep.String()).Str("content", content).Msg("Record to delete not found, skipping")
+				continue
+			}
+			if err := p.deleteRecord(ctx, zone, live[key][i]); err != nil {
+				return err
+			}
+			live[key] = slices.Delete(live[key], i, i+1)
+		}
+	}
+
+	for _, ep := range c.update {
+		key := endpointKey(ep)
+		if err := p.updateEndpoint(ctx, zone, ep, live[key]); err != nil {
+			return err
+		}
+		delete(live, key)
+	}
+
+	for _, ep := range c.create {
+		key := endpointKey(ep)
+		for _, target := range ep.Targets {
+			content := recordContent(ep.RecordType, target)
+			if slices.ContainsFunc(live[key], func(r pb.Record) bool { return sameContent(ep.RecordType, r.Content, content) }) {
+				p.logger.Debug().Str("zone", zone).Str("endpoint", ep.String()).Msg("Record already exists, skipping create")
+				continue
+			}
+			rec := pb.Record{
+				Name:    recordName(ep.DNSName, zone),
+				Type:    ep.RecordType,
+				Content: content,
+				TTL:     recordTTL(ep),
+			}
+			if err := p.createRecord(ctx, zone, rec); err != nil {
+				return err
+			}
+		}
+	}
 
 	return nil
 }
 
-// convertToPorkbunRecord transforms a list of endpoints into a list of Porkbun DNS Records
-// returns a pointer to a list of DNS Records
-func (p *PorkbunProvider) convertToPorkbunRecord(recs *[]pb.Record, endpoints []*endpoint.Endpoint, zoneName string) *[]pb.Record {
-	records := make([]pb.Record, len(endpoints))
+// updateEndpoint makes the live records of one name and type match ep.
+// Records whose content is still wanted are kept (their TTL fixed if needed),
+// remaining records are edited in place to the remaining targets, and any
+// surplus on either side is created or deleted.
+func (p *PorkbunProvider) updateEndpoint(ctx context.Context, zone string, ep *endpoint.Endpoint, live []pb.Record) error {
+	ttl := recordTTL(ep)
+	name := recordName(ep.DNSName, zone)
 
-	for i, ep := range endpoints {
-		p.logger.Debug().Str("endpoint", fmt.Sprintf("%+v", ep)).Msg("Converting endpoint to PorkbunRecord")
-		recordName := strings.TrimSuffix(ep.DNSName, "."+zoneName)
-		if recordName == zoneName {
-			recordName = "@"
-		}
-		target := ep.Targets[0]
-		if ep.RecordType == endpoint.RecordTypeTXT && strings.HasPrefix(target, "\"heritage=") {
-			target = strings.Trim(ep.Targets[0], "\"")
-		}
-
-		records[i] = pb.Record{
-			Type:    ep.RecordType,
-			Name:    recordName,
-			Content: target,
-			ID:      p.getIDForRecord(ep.DNSName, target, ep.RecordType, recs),
-		}
-	}
-	return &records
-}
-
-// getIDforRecord compares the endpoint with existing records to get the ID from Porkbun to ensure it can be safely removed.
-// returns empty string if no match found
-func (p *PorkbunProvider) getIDForRecord(recordName string, target string, recordType string, recs *[]pb.Record) string {
-	for _, rec := range *recs {
-		if recordType == rec.Type && target == rec.Content && rec.Name == recordName {
-			return rec.ID
-		}
+	var wanted []string
+	for _, target := range ep.Targets {
+		wanted = append(wanted, recordContent(ep.RecordType, target))
 	}
 
-	return ""
-}
-
-// pairUpdates copies the Porkbun record ID from each old record onto the new record
-// with the same name and type: only the old content exists in Porkbun, so only it
-// resolves to an ID, and EditRecord updates that record in place.
-func pairUpdates(oldRecs, newRecs *[]pb.Record) *[]pb.Record {
-	paired := make([]pb.Record, 0, len(*newRecs))
-	for _, n := range *newRecs {
-		for _, o := range *oldRecs {
-			if o.Name == n.Name && o.Type == n.Type && o.ID != "" {
-				n.ID = o.ID
-				break
+	var stale []pb.Record
+	for _, rec := range live {
+		i := slices.IndexFunc(wanted, func(content string) bool { return sameContent(ep.RecordType, rec.Content, content) })
+		if i < 0 {
+			stale = append(stale, rec)
+			continue
+		}
+		wanted = slices.Delete(wanted, i, i+1)
+		if ttl != "" && rec.TTL != ttl {
+			if err := p.editRecord(ctx, zone, rec, pb.Record{Name: name, Type: ep.RecordType, Content: rec.Content, TTL: ttl, Prio: rec.Prio}); err != nil {
+				return err
 			}
 		}
-		paired = append(paired, n)
 	}
-	return &paired
-}
 
-// endpointZoneName determines zoneName for endpoint by taking longest suffix zoneName match in endpoint DNSName
-// returns empty string if no match found
-func (p *PorkbunProvider) endpointZoneName(endpoint *endpoint.Endpoint, zones []string) (zone string) {
-	var matchZoneName string = ""
-	for _, zoneName := range zones {
-		if strings.HasSuffix(endpoint.DNSName, zoneName) && len(zoneName) > len(matchZoneName) {
-			matchZoneName = zoneName
+	for len(stale) > 0 && len(wanted) > 0 {
+		rec := stale[0]
+		if err := p.editRecord(ctx, zone, rec, pb.Record{Name: name, Type: ep.RecordType, Content: wanted[0], TTL: ttl, Prio: rec.Prio}); err != nil {
+			return err
+		}
+		stale, wanted = stale[1:], wanted[1:]
+	}
+
+	for _, content := range wanted {
+		if err := p.createRecord(ctx, zone, pb.Record{Name: name, Type: ep.RecordType, Content: content, TTL: ttl}); err != nil {
+			return err
 		}
 	}
-	return matchZoneName
+
+	for _, rec := range stale {
+		if err := p.deleteRecord(ctx, zone, rec); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (p *PorkbunProvider) createRecord(ctx context.Context, zone string, rec pb.Record) error {
+	p.logger.Debug().Str("zone", zone).Str("record", fmt.Sprintf("%+v", rec)).Msg("Creating new record")
+	if _, err := p.client.CreateRecord(ctx, zone, rec); err != nil {
+		p.logger.Error().Err(err).Str("zone", zone).Str("record", fmt.Sprintf("%+v", rec)).Msg("Failed to create record")
+		return fmt.Errorf("unable to create record: %w", err)
+	}
+	p.logger.Debug().Str("zone", zone).Str("record", fmt.Sprintf("%+v", rec)).Msg("Record created successfully")
+	return nil
+}
+
+func (p *PorkbunProvider) editRecord(ctx context.Context, zone string, old pb.Record, rec pb.Record) error {
+	p.logger.Debug().Str("zone", zone).Str("id", old.ID).Str("record", fmt.Sprintf("%+v", rec)).Msg("Updating record")
+	id, err := strconv.Atoi(old.ID)
+	if err != nil {
+		return fmt.Errorf("unable to parse record ID %q: %w", old.ID, err)
+	}
+	if err := p.client.EditRecord(ctx, zone, id, rec); err != nil {
+		p.logger.Error().Err(err).Str("zone", zone).Int("id", id).Str("record", fmt.Sprintf("%+v", rec)).Msg("Failed to update record")
+		return fmt.Errorf("unable to update record: %w", err)
+	}
+	p.logger.Debug().Str("zone", zone).Int("id", id).Msg("Record updated successfully")
+	return nil
+}
+
+func (p *PorkbunProvider) deleteRecord(ctx context.Context, zone string, rec pb.Record) error {
+	p.logger.Debug().Str("zone", zone).Str("record", fmt.Sprintf("%+v", rec)).Msg("Deleting record")
+	id, err := strconv.Atoi(rec.ID)
+	if err != nil {
+		return fmt.Errorf("unable to parse record ID %q: %w", rec.ID, err)
+	}
+	if err := p.client.DeleteRecord(ctx, zone, id); err != nil {
+		p.logger.Error().Err(err).Str("zone", zone).Int("id", id).Str("record", fmt.Sprintf("%+v", rec)).Msg("Failed to delete record")
+		return fmt.Errorf("unable to delete record: %w", err)
+	}
+	p.logger.Debug().Str("zone", zone).Int("id", id).Msg("Record deleted successfully")
+	return nil
+}
+
+func endpointKey(ep *endpoint.Endpoint) recordKey {
+	return recordKey{normalizeName(ep.DNSName), ep.RecordType}
+}
+
+// normalizeName lowercases a DNS name and strips any trailing dot.
+func normalizeName(name string) string {
+	return strings.TrimSuffix(strings.ToLower(name), ".")
+}
+
+// recordName converts a fully qualified name into the subdomain Porkbun
+// expects; the zone apex is the empty string.
+func recordName(dnsName string, zone string) string {
+	name := normalizeName(dnsName)
+	if name == zone {
+		return ""
+	}
+	return strings.TrimSuffix(name, "."+zone)
+}
+
+// recordContent converts an endpoint target into Porkbun record content.
+func recordContent(recordType string, target string) string {
+	if recordType == endpoint.RecordTypeTXT && strings.HasPrefix(target, "\"heritage=") {
+		return strings.Trim(target, "\"")
+	}
+	return target
+}
+
+// sameContent compares record contents. TXT content is case-sensitive but its
+// surrounding quotes are ignored; other types compare case-insensitively.
+func sameContent(recordType string, a, b string) bool {
+	if recordType == endpoint.RecordTypeTXT {
+		return strings.Trim(a, "\"") == strings.Trim(b, "\"")
+	}
+	return strings.EqualFold(a, b)
+}
+
+// recordTTL returns the TTL to send to Porkbun, or "" for the Porkbun default.
+func recordTTL(ep *endpoint.Endpoint) string {
+	if !ep.RecordTTL.IsConfigured() {
+		return ""
+	}
+	return strconv.FormatInt(max(int64(ep.RecordTTL), minTTL), 10)
+}
+
+// endpointZoneName determines the zone for a DNS name by taking the longest
+// zone that is either the name itself or a parent domain of it.
+// returns empty string if no match found
+func endpointZoneName(dnsName string, zones []string) string {
+	name := normalizeName(dnsName)
+	match := ""
+	for _, zone := range zones {
+		if (name == zone || strings.HasSuffix(name, "."+zone)) && len(zone) > len(match) {
+			match = zone
+		}
+	}
+	return match
 }
