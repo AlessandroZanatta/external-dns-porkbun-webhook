@@ -8,7 +8,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
     go build -trimpath -ldflags="-s -w" -o /out/external-dns-porkbun-webhook .
 
-FROM alpine:3.22
+FROM alpine:3.24
 
 COPY --from=builder /out/external-dns-porkbun-webhook /
 USER 65532:65532
