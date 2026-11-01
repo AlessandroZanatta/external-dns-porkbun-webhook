@@ -9,6 +9,7 @@ import (
 
 	"github.com/rs/zerolog"
 	"sigs.k8s.io/external-dns/endpoint"
+	"sigs.k8s.io/external-dns/pkg/apis/externaldns"
 	"sigs.k8s.io/external-dns/plan"
 	"sigs.k8s.io/external-dns/provider/webhook"
 
@@ -28,11 +29,13 @@ func newWebhook(t *testing.T) (*webhook.WebhookProvider, *porkbuntest.Server, *h
 	srv := httptest.NewServer(buildWebhookServer(p))
 	t.Cleanup(srv.Close)
 
-	client, err := webhook.NewWebhookProvider(srv.URL)
+	cfg := externaldns.NewConfig()
+	cfg.WebhookProviderURL = srv.URL
+	wp, err := webhook.New(context.Background(), cfg, nil)
 	if err != nil {
-		t.Fatalf("NewWebhookProvider: %v", err)
+		t.Fatalf("webhook.New: %v", err)
 	}
-	return client, api, srv
+	return wp.(*webhook.WebhookProvider), api, srv
 }
 
 func TestHealthz(t *testing.T) {
