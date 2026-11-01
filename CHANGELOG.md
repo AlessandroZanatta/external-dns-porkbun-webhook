@@ -5,6 +5,15 @@
 
 * update records in place using old record ID ([0ae5405](https://github.com/AlessandroZanatta/external-dns-porkbun-webhook/commit/0ae54056d9655072ca89c27cfc488411b0993c7f))
 
+## [1.0.6](https://github.com/AlessandroZanatta/external-dns-porkbun-webhook/compare/v1.0.5...v1.0.6) (2026-11-01)
+
+
+### Bug Fixes
+
+* **deps:** adapt to external-dns v0.24 webhook API and Go 1.27 ([9668b80](https://github.com/AlessandroZanatta/external-dns-porkbun-webhook/commit/9668b8093699e19b84829daf7a3171bcf9c868b8))
+* **deps:** update go dependencies ([4ad1096](https://github.com/AlessandroZanatta/external-dns-porkbun-webhook/commit/4ad1096c7f9e4377ce2ad7cc2df1fa8a742b9c5e))
+* **deps:** update go dependencies ([303d1c1](https://github.com/AlessandroZanatta/external-dns-porkbun-webhook/commit/303d1c124cd10ce5c18c04fd77188775dcd29108))
+
 ## [1.0.5](https://github.com/AlessandroZanatta/external-dns-porkbun-webhook/compare/v1.0.4...v1.0.5) (2026-10-25)
 
 
